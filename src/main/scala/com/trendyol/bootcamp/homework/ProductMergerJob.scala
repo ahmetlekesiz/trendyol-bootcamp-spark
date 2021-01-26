@@ -43,6 +43,7 @@ object ProductMergerJob {
       .appName("Spark ")
       .getOrCreate()
 
+    // Get current data for using while saving updated dataset
     val yyyyMMddFormatter    = DateTimeFormatter.ofPattern("yyyyMMdd")
     val currentTime          = LocalDateTime.now().truncatedTo(ChronoUnit.DAYS)
     val formattedCurrentDate = currentTime.format(yyyyMMddFormatter)
@@ -52,13 +53,13 @@ object ProductMergerJob {
     import spark.implicits._
 
     // Read initial dataset
-    val ds = spark.read.json(s"data/homework/initial_data.json").as[ProductData]
+    val initialDataset = spark.read.json(s"data/homework/initial_data.json").as[ProductData]
 
     // Read new dataset
-    val newDs = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
+    val newDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
 
     // Concat two dataset
-    val unionDs = ds.union(newDs)
+    val initialAndNewDataset = initialDataset.union(newDataset)
 
     // Get updated records by using Window
     // I have ordered by timestamp to use during filter to get the most recent record of the product.
@@ -66,17 +67,17 @@ object ProductMergerJob {
 
     // Set row_numbers to each record.
     // I have filtered the rows which are less than 2 in record column since the most recent record will have 1 in result column.
-    val mergedDs = unionDs
+    val filteredDataset = initialAndNewDataset
       .withColumn("result",row_number().over(win))
       .filter(col("result")<2)
       .drop("result")
       .orderBy("id")
 
     // Rearrange the column order
-    val returnDs = mergedDs.select("id", "name", "category", "brand", "color", "price", "timestamp")
+    val returnDataset = filteredDataset.select("id", "name", "category", "brand", "color", "price", "timestamp")
 
     // Save the updated dataset.
-    returnDs
+    returnDataset
       .withColumn("partition_date", lit(formattedCurrentDate))
       .repartition(1)
       .write
