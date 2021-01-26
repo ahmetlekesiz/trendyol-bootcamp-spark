@@ -5,59 +5,33 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{col, lit, max, row_number}
+import org.apache.spark.sql.{DataFrame, Dataset, SaveMode, SparkSession}
+import org.apache.spark.sql.functions.{col, lit, row_number}
 
 
 // This case class defines our data record type
-case class ProductData (
-                         id: Long,
-                         name: String,
-                         category: String,
-                         brand: String,
-                         color: String,
-                         price: Double,
-                         timestamp: Long
-                       )
+case class ProductData ( id: Long, name: String, category: String, brand: String, color: String,
+                         price: Double, timestamp: Long)
 
 object ProductMergerJob {
 
-  def main(args: Array[String]): Unit = {
-
-    /**
-    * Find the latest version of each product in every run, and save it as snapshot.
-    *
-    * Product data stored under the data/homework folder.
-    * Read data/homework/initial_data.json for the first run.
-    * Read data/homework/cdc_data.json for the nex runs.
-    *
-    * Save results as json, parquet or etc.
-    *
-    * Note: You can use SQL, dataframe or dataset APIs, but type safe implementation is recommended.
-    */
-
-    // Init spark session
+  def initSpark(): SparkSession = {
     val spark = SparkSession
       .builder()
       .master("local")
       .appName("Spark ")
       .getOrCreate()
+    spark
+  }
 
-    // Get current data for using while saving updated dataset
+  def generateCurrentDate(): String = {
     val yyyyMMddFormatter    = DateTimeFormatter.ofPattern("yyyyMMdd")
     val currentTime          = LocalDateTime.now().truncatedTo(ChronoUnit.DAYS)
     val formattedCurrentDate = currentTime.format(yyyyMMddFormatter)
+    formattedCurrentDate
+  }
 
-    // Change the Log Level to see just Errors.
-    spark.sparkContext.setLogLevel("ERROR")
-    import spark.implicits._
-
-    // Read initial dataset
-    val initialDataset = spark.read.json(s"data/homework/initial_data.json").as[ProductData]
-
-    // Read new dataset
-    val newDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
-
+  def mergeProductDatasets(initialDataset: Dataset[ProductData], newDataset: Dataset[ProductData]): DataFrame = {
     // Concat two dataset
     val initialAndNewDataset = initialDataset.union(newDataset)
 
@@ -74,9 +48,11 @@ object ProductMergerJob {
       .orderBy("id")
 
     // Rearrange the column order
-    val returnDataset = filteredDataset.select("id", "name", "category", "brand", "color", "price", "timestamp")
+    val updatedDataframe = filteredDataset.select("id", "name", "category", "brand", "color", "price", "timestamp")
+    updatedDataframe
+  }
 
-    // Save the updated dataset.
+  def saveUpdatedDataframe(returnDataset: DataFrame, formattedCurrentDate: String): Unit = {
     returnDataset
       .withColumn("partition_date", lit(formattedCurrentDate))
       .repartition(1)
@@ -84,6 +60,49 @@ object ProductMergerJob {
       .partitionBy("partition_date")
       .mode(SaveMode.Append)
       .json("homework_output/batch")
+  }
+
+  def main(args: Array[String]): Unit = {
+
+    /***  HOMEWORK DEFINITION
+    * Find the latest version of each product in every run, and save it as snapshot.
+    *
+    * Product data stored under the data/homework folder.
+    * Read data/homework/initial_data.json for the first run.
+    * Read data/homework/cdc_data.json for the nex runs.
+    *
+    * Save results as json, parquet or etc.
+    *
+    * Note: You can use SQL, dataframe or dataset APIs, but type safe implementation is recommended.
+    */
+
+    /*** SOLUTION APPROACH EXPLAINED
+    * // TODO
+    *
+    *
+    */
+
+    // Init spark session
+    val spark = initSpark()
+
+    // Get current data for using while saving updated dataset
+    val formattedCurrentDate = generateCurrentDate()
+
+    // Change the Log Level to see just Errors.
+    spark.sparkContext.setLogLevel("ERROR")
+    import spark.implicits._
+
+    // Read initial dataset
+    val initialDataset = spark.read.json(s"data/homework/initial_data.json").as[ProductData]
+
+    // Read new dataset
+    val newDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
+
+    // Merge two dataset and return updated version as dataframe
+    val returnDataset = mergeProductDatasets(initialDataset, newDataset)
+
+    // Save the updated dataset.
+    saveUpdatedDataframe(returnDataset, formattedCurrentDate)
 
   }
 
