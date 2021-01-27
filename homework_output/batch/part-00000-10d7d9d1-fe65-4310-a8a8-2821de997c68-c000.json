@@ -7,5 +7,4 @@
 {"id":7,"name":"product7","category":"Laptop","brand":"dell","color":"white","price":4500.0,"timestamp":1611141595000}
 {"id":8,"name":"product8","category":"Laptop","brand":"apple","color":"white","price":5500.0,"timestamp":1611141595000}
 {"id":9,"name":"product9","category":"Laptop","brand":"apple","color":"black","price":5000.0,"timestamp":1611141595000}
-{"id":10,"name":"product10","category":"Mobile Phone","brand":"apple","color":"white","price":1000.0,"timestamp":1611141595000}
 {"id":10,"name":"product10_new","category":"Mobile Phone","brand":"apple","color":"white","price":1000.0,"timestamp":1611141595002}

@@ -4,8 +4,9 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
+import com.trendyol.bootcamp.batch.ProductViewEvent
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.{DataFrame, Dataset, SaveMode, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, Encoders, SaveMode, SparkSession}
 import org.apache.spark.sql.functions.{col, lit, max, row_number}
 import org.apache.hadoop.fs.{FileSystem, Path}
 
@@ -57,12 +58,10 @@ object ProductMergerJob {
 
   def saveUpdatedDataframe(returnDataset: DataFrame, formattedCurrentDate: String): Unit = {
     returnDataset
-      .withColumn("partition_date", lit(formattedCurrentDate))
       .repartition(1)
       .write
-      .partitionBy("partition_date")
-      .mode(SaveMode.Append)
-      .json("homework_output/batch")
+      .mode(SaveMode.Overwrite)
+      .json("homework_output/batch1")
   }
 
   def main(args: Array[String]): Unit = {
@@ -102,22 +101,34 @@ object ProductMergerJob {
     // Get current data for using while updating dataset after first time
     val formattedCurrentDate = generateCurrentDate()
 
+    /*
     // Try to get previous output, if you are not running the job for the first time
     val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
     val lastPartitionFolderName = Try(fs.listStatus(new Path(s"homework_output/batch")).filter(_.isDir).map(_.getPath).map(e => (e.toString).split("/").last).last).getOrElse("")
     val lastPartitionFolderPath = "homework_output/batch/" + lastPartitionFolderName
+*/
+    val viewSchema = Encoders.product[ProductData].schema
 
+    // TODO
     val lastProcessedDataset = Try(
-      spark.read
-        .json(lastPartitionFolderPath).as[ProductData]
+      spark.read.schema(viewSchema)
+        .json("homework_output/batch").as[ProductData]
     ).getOrElse(spark.emptyDataset[ProductData])
 
     // Read initial dataset
-    val initialDataset = spark.read.json(s"data/homework/initial_data.json").as[ProductData]
+   // val cdcDataset = spark.read.json(s"data/homework/initial_data.json").as[ProductData]
+
+    val cdcDataset = spark.read.schema(viewSchema).json(s"data/homework/cdc_data.json").as[ProductData]
+ş
+    //val cdcDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
 
     // Read new dataset
-    val newDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
+    //val newDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
 
+    val returnDataframe = mergeProductDatasets(cdcDataset, lastProcessedDataset)
+    saveUpdatedDataframe(returnDataframe, formattedCurrentDate)
+
+    /*
     // Merge two dataset and return updated version as dataframe
     if(formattedCurrentDate == initialStartTime) {
       // Save the new dataset.
@@ -128,6 +139,7 @@ object ProductMergerJob {
       val returnDataframe = mergeProductDatasets(lastProcessedDataset, newDataset)
       saveUpdatedDataframe(returnDataframe, formattedCurrentDate)
     }
+     */
 
   }
 
