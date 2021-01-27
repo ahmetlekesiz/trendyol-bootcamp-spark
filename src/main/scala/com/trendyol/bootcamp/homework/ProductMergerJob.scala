@@ -6,7 +6,10 @@ import java.time.temporal.ChronoUnit
 
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, Dataset, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{col, lit, row_number}
+import org.apache.spark.sql.functions.{col, lit, max, row_number}
+import org.apache.hadoop.fs.{FileSystem, Path}
+
+import scala.util.Try
 
 
 // This case class defines our data record type
@@ -76,21 +79,38 @@ object ProductMergerJob {
     * Note: You can use SQL, dataframe or dataset APIs, but type safe implementation is recommended.
     */
 
-    /*** SOLUTION APPROACH EXPLAINED
-    * // TODO
-    *
-    *
+    /***
+    * ASSUMPTION
+    * I assume that this job will run once in a day. In this assumption there is only one json file in each partition_date folder.
+    * If it needs to be run more than one in a day, we need to get latest json in the partition_date folder.
+    * -------------------
+    * SOLUTION APPROACH
+    * First, look at the batch output folder. If there is any exist data, read json as dataset and use it for merging with new dataset.
+    * If there is no exist data, get initial data and use it for merging with new dataset.
     */
 
     // Init spark session
     val spark = initSpark()
 
-    // Get current data for using while saving updated dataset
-    val formattedCurrentDate = generateCurrentDate()
-
     // Change the Log Level to see just Errors.
     spark.sparkContext.setLogLevel("ERROR")
     import spark.implicits._
+
+    // Use initialStarTime when running the job for first time
+    val initialStartTime     = "20210101"
+
+    // Get current data for using while updating dataset after first time
+    val formattedCurrentDate = generateCurrentDate()
+
+    // Try to get previous output, if you are not running the job for the first time
+    val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
+    val lastPartitionFolderName = fs.listStatus(new Path(s"homework_output/batch")).filter(_.isDir).map(_.getPath).map(e => (e.toString).split("/").last).last
+    val lastPartitionFolderPath = "homework_output/batch/" + lastPartitionFolderName
+
+    val lastProcessedDataset = Try(
+      spark.read
+        .json(lastPartitionFolderPath).as[ProductData]
+    ).getOrElse(spark.emptyDataset[ProductData])
 
     // Read initial dataset
     val initialDataset = spark.read.json(s"data/homework/initial_data.json").as[ProductData]
@@ -99,10 +119,15 @@ object ProductMergerJob {
     val newDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
 
     // Merge two dataset and return updated version as dataframe
-    val returnDataset = mergeProductDatasets(initialDataset, newDataset)
-
-    // Save the updated dataset.
-    saveUpdatedDataframe(returnDataset, formattedCurrentDate)
+    if(formattedCurrentDate == initialStartTime) {
+      // Save the new dataset.
+      val returnDataframe = mergeProductDatasets(initialDataset, newDataset)
+      saveUpdatedDataframe(returnDataframe, initialStartTime)
+    }else {
+      // Save the updated dataset.
+      val returnDataframe = mergeProductDatasets(lastProcessedDataset, newDataset)
+      saveUpdatedDataframe(returnDataframe, formattedCurrentDate)
+    }
 
   }
 
