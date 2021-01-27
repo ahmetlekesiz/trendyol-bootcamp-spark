@@ -97,14 +97,14 @@ object ProductMergerJob {
     import spark.implicits._
 
     // Use initialStarTime when running the job for first time
-    val initialStartTime     = "20210101"
+    val initialStartTime     = "20210127"
 
     // Get current data for using while updating dataset after first time
     val formattedCurrentDate = generateCurrentDate()
 
     // Try to get previous output, if you are not running the job for the first time
     val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
-    val lastPartitionFolderName = fs.listStatus(new Path(s"homework_output/batch")).filter(_.isDir).map(_.getPath).map(e => (e.toString).split("/").last).last
+    val lastPartitionFolderName = Try(fs.listStatus(new Path(s"homework_output/batch")).filter(_.isDir).map(_.getPath).map(e => (e.toString).split("/").last).last).getOrElse("")
     val lastPartitionFolderPath = "homework_output/batch/" + lastPartitionFolderName
 
     val lastProcessedDataset = Try(
