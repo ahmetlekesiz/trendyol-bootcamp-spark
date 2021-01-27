@@ -119,7 +119,7 @@ object ProductMergerJob {
    // val cdcDataset = spark.read.json(s"data/homework/initial_data.json").as[ProductData]
 
     val cdcDataset = spark.read.schema(viewSchema).json(s"data/homework/cdc_data.json").as[ProductData]
-ş
+
     //val cdcDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
 
     // Read new dataset
