@@ -19,3 +19,5 @@ First, look at the batch output folder. If there is any exist data, read json as
 If there is no exist data, get initial data and use it for merging with new dataset. <br/>
 ### OUTPUT FOR INITIAL RUN
 <img src="https://github.com/ahmetlekesiz/trendyol-bootcamp-spark/blob/master/homework_output/initial_output.PNG?raw=true" />
+### OUTPUT FOR AFTER INITIAL RUN
+<img src="https://github.com/ahmetlekesiz/trendyol-bootcamp-spark/blob/master/homework_output/output_after_initial_run.PNG?raw=true" />
