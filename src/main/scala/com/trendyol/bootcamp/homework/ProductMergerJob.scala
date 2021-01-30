@@ -9,7 +9,9 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, Dataset, Encoders, SaveMode, SparkSession}
 import org.apache.spark.sql.functions.{col, lit, max, row_number}
 import org.apache.hadoop.fs.{FileSystem, Path}
-
+import scala.reflect.io.Directory
+import java.io.File
+import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.util.Try
 
 
@@ -26,13 +28,6 @@ object ProductMergerJob {
       .appName("Spark ")
       .getOrCreate()
     spark
-  }
-
-  def generateCurrentDate(): String = {
-    val yyyyMMddFormatter    = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val currentTime          = LocalDateTime.now().truncatedTo(ChronoUnit.DAYS)
-    val formattedCurrentDate = currentTime.format(yyyyMMddFormatter)
-    formattedCurrentDate
   }
 
   def mergeProductDatasets(initialDataset: Dataset[ProductData], newDataset: Dataset[ProductData]): DataFrame = {
@@ -56,12 +51,34 @@ object ProductMergerJob {
     updatedDataframe
   }
 
-  def saveUpdatedDataframe(returnDataset: DataFrame, formattedCurrentDate: String): Unit = {
+  def deleteDirectory(sourcePath: String): Unit = {
+    val directory = new Directory(new File(sourcePath))
+    directory.deleteRecursively()
+  }
+
+  def moveTempToSource(tempPath: String, sourcePath: String) = {
+    val d1 = new File(tempPath).toPath
+    val d2 = new File(sourcePath).toPath
+    Files.move(d1, d2, StandardCopyOption.ATOMIC_MOVE)
+  }
+
+  def writeToTemp(returnDataset: DataFrame, tempPath: String) = {
     returnDataset
       .repartition(1)
       .write
       .mode(SaveMode.Overwrite)
-      .json("homework_output/batch1")
+      .json(tempPath)
+  }
+
+  def saveUpdatedDataframe(returnDataset: DataFrame): Unit = {
+    val sourcePath = "homework_output/batch"
+    val tempPath = "homework_output/batch_temp"
+    // Write to temp directory
+    writeToTemp(returnDataset, tempPath)
+    // Delete the source directory
+    deleteDirectory(sourcePath)
+    // Move temp to source directory
+    moveTempToSource(tempPath, sourcePath)
   }
 
   def main(args: Array[String]): Unit = {
@@ -95,52 +112,23 @@ object ProductMergerJob {
     spark.sparkContext.setLogLevel("ERROR")
     import spark.implicits._
 
-    // Use initialStarTime when running the job for first time
-    val initialStartTime     = "20210127"
-
-    // Get current data for using while updating dataset after first time
-    val formattedCurrentDate = generateCurrentDate()
-
-    /*
-    // Try to get previous output, if you are not running the job for the first time
-    val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
-    val lastPartitionFolderName = Try(fs.listStatus(new Path(s"homework_output/batch")).filter(_.isDir).map(_.getPath).map(e => (e.toString).split("/").last).last).getOrElse("")
-    val lastPartitionFolderPath = "homework_output/batch/" + lastPartitionFolderName
-*/
     val viewSchema = Encoders.product[ProductData].schema
 
-    // TODO
     val lastProcessedDataset = Try(
       spark.read.schema(viewSchema)
         .json("homework_output/batch").as[ProductData]
     ).getOrElse(spark.emptyDataset[ProductData])
 
-    // Read initial dataset
-   // val cdcDataset = spark.read.json(s"data/homework/initial_data.json").as[ProductData]
+    // If the output folder is empty, then read initial data, else read cdc_data.
+    val cdcDataset = if(lastProcessedDataset.isEmpty) spark.read.schema(viewSchema).json(s"data/homework/initial_data.json").as[ProductData]
+                      else spark.read.schema(viewSchema).json(s"data/homework/cdc_data.json").as[ProductData]
 
-    val cdcDataset = spark.read.schema(viewSchema).json(s"data/homework/cdc_data.json").as[ProductData]
-
-    //val cdcDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
-
-    // Read new dataset
-    //val newDataset = spark.read.json(s"data/homework/cdc_data.json").as[ProductData]
-
-    val returnDataframe = mergeProductDatasets(cdcDataset, lastProcessedDataset)
-    saveUpdatedDataframe(returnDataframe, formattedCurrentDate)
-
-    /*
     // Merge two dataset and return updated version as dataframe
-    if(formattedCurrentDate == initialStartTime) {
-      // Save the new dataset.
-      val returnDataframe = mergeProductDatasets(initialDataset, newDataset)
-      saveUpdatedDataframe(returnDataframe, initialStartTime)
-    }else {
-      // Save the updated dataset.
-      val returnDataframe = mergeProductDatasets(lastProcessedDataset, newDataset)
-      saveUpdatedDataframe(returnDataframe, formattedCurrentDate)
-    }
-     */
+    val returnDataframe = mergeProductDatasets(cdcDataset, lastProcessedDataset)
 
+    spark.catalog.clearCache()
+
+    // Save the updated dataset.
+    saveUpdatedDataframe(returnDataframe)
   }
-
 }
