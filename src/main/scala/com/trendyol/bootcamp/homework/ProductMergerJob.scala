@@ -1,19 +1,9 @@
 package com.trendyol.bootcamp.homework
 
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-
-import com.trendyol.bootcamp.batch.{ChannelCategoryView, ProductViewEvent}
-import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.{DataFrame, Dataset, Encoders, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{col, lit, max, row_number}
-import org.apache.hadoop.fs.{FileSystem, Path}
-
+import org.apache.spark.sql.{Dataset, Encoders, SaveMode, SparkSession}
 import scala.reflect.io.Directory
 import java.io.File
 import java.nio.file.{Files, Path, StandardCopyOption}
-
 import scala.util.Try
 
 
@@ -32,27 +22,26 @@ object ProductMergerJob {
     spark
   }
 
-  def mergeProductDatasets(initialDataset: Dataset[ProductData], newDataset: Dataset[ProductData]): DataFrame = {
+  def mergeProductDatasets(spark: SparkSession, initialDataset: Dataset[ProductData], newDataset: Dataset[ProductData]): Dataset[ProductData] = {
+    // TODO Global olarak import etmenin bir yolu var mı?
+    //  Bu şekilde yaparsak her fonksiyona spark session'ı göndermemiz gerekecek.
+    import spark.implicits._
+
     // Concat two dataset
     val initialAndNewDataset = initialDataset.union(newDataset)
 
-    initialAndNewDataset.groupByKey(_.id)()
-    // Get updated records by using Window
-    // I have ordered by timestamp to use during filter to get the most recent record of the product.
-    val win = Window.partitionBy("id").orderBy(org.apache.spark.sql.functions.col("timestamp").desc)
-
-
-    // Set row_numbers to each record.
-    // I have filtered the rows which are less than 2 in record column since the most recent record will have 1 in result column.
-    val filteredDataset = initialAndNewDataset
-      .withColumn("result",row_number().over(win))
-      .filter(col("result")<2)
-      .drop("result")
-      .orderBy("id")
+    val updatedDataset = initialAndNewDataset
+      .groupByKey(_.id)
+      .reduceGroups{
+        (a, b) => if(a.timestamp>b.timestamp) a else b
+      }
+      .map{
+        case(id, product) =>  product
+      }
+      .sort("id")
 
     // Rearrange the column order
-    val updatedDataframe = filteredDataset.select("id", "name", "category", "brand", "color", "price", "timestamp")
-    updatedDataframe
+    updatedDataset
   }
 
   def deleteDirectory(sourcePath: String): Unit = {
@@ -61,12 +50,16 @@ object ProductMergerJob {
   }
 
   def moveTempToSource(tempPath: String, sourcePath: String) = {
+    // TODO Use Hadoop File system
+    //  Hadoop'u kullanmak çok daha mantıklı.
+    //  Java file sistem kullanırsan localdeki path e bakıyor.
+
     val d1 = new File(tempPath).toPath
     val d2 = new File(sourcePath).toPath
     Files.move(d1, d2, StandardCopyOption.ATOMIC_MOVE)
   }
 
-  def writeToTemp(returnDataset: DataFrame, tempPath: String) = {
+  def writeToTemp(returnDataset: Dataset[ProductData], tempPath: String) = {
     returnDataset
       .repartition(1)
       .write
@@ -74,7 +67,7 @@ object ProductMergerJob {
       .json(tempPath)
   }
 
-  def saveUpdatedDataframe(returnDataset: DataFrame): Unit = {
+  def saveUpdatedDataframe(returnDataset: Dataset[ProductData]): Unit = {
     val sourcePath = "homework_output/batch"
     val tempPath = "homework_output/batch_temp"
     // Write to temp directory
@@ -128,11 +121,9 @@ object ProductMergerJob {
                       else spark.read.schema(viewSchema).json(s"data/homework/cdc_data.json").as[ProductData]
 
     // Merge two dataset and return updated version as dataframe
-    val returnDataframe = mergeProductDatasets(cdcDataset, lastProcessedDataset)
-
-    spark.catalog.clearCache()
+    val returnDataset = mergeProductDatasets(spark, cdcDataset, lastProcessedDataset)
 
     // Save the updated dataset.
-    saveUpdatedDataframe(returnDataframe)
+    saveUpdatedDataframe(returnDataset)
   }
 }
