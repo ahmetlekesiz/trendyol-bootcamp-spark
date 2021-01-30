@@ -4,14 +4,16 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
-import com.trendyol.bootcamp.batch.ProductViewEvent
+import com.trendyol.bootcamp.batch.{ChannelCategoryView, ProductViewEvent}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, Dataset, Encoders, SaveMode, SparkSession}
 import org.apache.spark.sql.functions.{col, lit, max, row_number}
 import org.apache.hadoop.fs.{FileSystem, Path}
+
 import scala.reflect.io.Directory
 import java.io.File
 import java.nio.file.{Files, Path, StandardCopyOption}
+
 import scala.util.Try
 
 
@@ -34,9 +36,11 @@ object ProductMergerJob {
     // Concat two dataset
     val initialAndNewDataset = initialDataset.union(newDataset)
 
+    initialAndNewDataset.groupByKey(_.id)()
     // Get updated records by using Window
     // I have ordered by timestamp to use during filter to get the most recent record of the product.
     val win = Window.partitionBy("id").orderBy(org.apache.spark.sql.functions.col("timestamp").desc)
+
 
     // Set row_numbers to each record.
     // I have filtered the rows which are less than 2 in record column since the most recent record will have 1 in result column.
