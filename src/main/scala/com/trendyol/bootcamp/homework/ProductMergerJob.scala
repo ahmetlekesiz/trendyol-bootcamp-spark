@@ -38,7 +38,6 @@ object ProductMergerJob {
       .map{
         case(id, product) =>  product
       }
-      .sort("id")
 
     // Rearrange the column order
     updatedDataset
