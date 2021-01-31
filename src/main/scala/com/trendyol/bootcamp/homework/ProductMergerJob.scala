@@ -22,10 +22,8 @@ object ProductMergerJob {
     spark
   }
 
-  def mergeProductDatasets(spark: SparkSession, initialDataset: Dataset[ProductData], newDataset: Dataset[ProductData]): Dataset[ProductData] = {
-    // TODO Global olarak import etmenin bir yolu var mı?
-    //  Bu şekilde yaparsak her fonksiyona spark session'ı göndermemiz gerekecek.
-    import spark.implicits._
+  def mergeProductDatasets(initialDataset: Dataset[ProductData], newDataset: Dataset[ProductData]): Dataset[ProductData] = {
+    import newDataset.sparkSession.implicits._
 
     // Concat two dataset
     val initialAndNewDataset = initialDataset.union(newDataset)
@@ -120,7 +118,7 @@ object ProductMergerJob {
                       else spark.read.schema(viewSchema).json(s"data/homework/cdc_data.json").as[ProductData]
 
     // Merge two dataset and return updated version as dataframe
-    val returnDataset = mergeProductDatasets(spark, cdcDataset, lastProcessedDataset)
+    val returnDataset = mergeProductDatasets(cdcDataset, lastProcessedDataset)
 
     // Save the updated dataset.
     saveUpdatedDataframe(returnDataset)
