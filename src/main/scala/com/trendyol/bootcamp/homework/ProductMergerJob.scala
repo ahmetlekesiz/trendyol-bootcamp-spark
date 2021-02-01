@@ -1,11 +1,12 @@
 package com.trendyol.bootcamp.homework
 
 import org.apache.spark.sql.{Dataset, Encoders, SaveMode, SparkSession}
+
 import scala.reflect.io.Directory
 import java.io.File
 import java.nio.file.{Files, Path, StandardCopyOption}
-import scala.util.Try
 
+import scala.util.Try
 
 // This case class defines our data record type
 case class ProductData ( id: Long, name: String, category: String, brand: String, color: String,
@@ -46,17 +47,13 @@ object ProductMergerJob {
     directory.deleteRecursively()
   }
 
-  def moveTempToSource(tempPath: String, sourcePath: String) = {
-    // TODO Use Hadoop File system
-    //  Hadoop'u kullanmak çok daha mantıklı.
-    //  Java file sistem kullanırsan localdeki path e bakıyor.
-
+  def moveTempToSource(tempPath: String, sourcePath: String): Path = {
     val d1 = new File(tempPath).toPath
     val d2 = new File(sourcePath).toPath
     Files.move(d1, d2, StandardCopyOption.ATOMIC_MOVE)
   }
 
-  def writeToTemp(returnDataset: Dataset[ProductData], tempPath: String) = {
+  def writeToTemp(returnDataset: Dataset[ProductData], tempPath: String): Unit = {
     returnDataset
       .repartition(1)
       .write
@@ -76,7 +73,6 @@ object ProductMergerJob {
   }
 
   def main(args: Array[String]): Unit = {
-
     /***  HOMEWORK DEFINITION
     * Find the latest version of each product in every run, and save it as snapshot.
     *
